@@ -25,6 +25,7 @@ public class PostController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<Post>> PostPost(Post post)
     {
+        post.User = null;
         _context.Post.Add(post);
         await _context.SaveChangesAsync();
 

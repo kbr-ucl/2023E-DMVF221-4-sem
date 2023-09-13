@@ -1,5 +1,8 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using System.Text;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Newtonsoft.Json;
+using RabbitMQ.Client;
 using UserService.Data;
 using UserService.Entities;
 
@@ -22,11 +25,32 @@ public class UsersController : ControllerBase
         return await _context.User.ToListAsync();
     }
 
+    private void PublishToMessageQueue(string integrationEvent, string eventData)
+    {
+        // TOOO: Reuse and close connections and channel, etc, 
+        var factory = new ConnectionFactory();
+        var connection = factory.CreateConnection();
+        var channel = connection.CreateModel();
+        var body = Encoding.UTF8.GetBytes(eventData);
+        channel.BasicPublish("user",
+            integrationEvent,
+            null,
+            body);
+    }
+
     [HttpPut("{id}")]
     public async Task<IActionResult> PutUser(int id, User user)
     {
         _context.Entry(user).State = EntityState.Modified;
         await _context.SaveChangesAsync();
+
+        var integrationEventData = JsonConvert.SerializeObject(new
+        {
+            id = user.ID,
+            newname = user.Name
+        });
+        PublishToMessageQueue("user.update", integrationEventData);
+
         return NoContent();
     }
 
@@ -35,6 +59,14 @@ public class UsersController : ControllerBase
     {
         _context.User.Add(user);
         await _context.SaveChangesAsync();
+
+        var integrationEventData = JsonConvert.SerializeObject(new
+        {
+            id = user.ID,
+            name = user.Name
+        });
+        PublishToMessageQueue("user.add", integrationEventData);
+
         return CreatedAtAction("GetUser", new {id = user.ID}, user);
     }
 }
